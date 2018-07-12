@@ -1,7 +1,152 @@
 #include <iostream>
+#include <variant>
+#include <memory>
 
-int main(int argc, const char** argv)
+/**************************** MODEL ******************************/
+
+using fixnum = long;
+
+using obj = std::variant<fixnum>;
+
+using objptr = std::shared_ptr<obj>;
+
+objptr alloc_object(void)
 {
-     std::cout << "Hello World!" << std::endl;
+    return std::make_shared<obj>();
+}
+
+template <typename T>
+objptr make_object(T value)
+{
+    return std::make_shared<obj>(value);
+}
+
+inline bool is_fixnum(objptr o)
+{
+    return o->index() == 0;
+}
+
+/***************************** READ ******************************/
+
+inline bool is_delimiter(char c)
+{
+    constexpr char delims[5] = {'(', ')', '"', ';'};
+    return (isspace(c) || (std::find(std::begin(delims), std::end(delims), c) != std::end(delims)));
+}
+
+inline void eat_whitespace(std::istream &in)
+{
+    char c;
+
+    while (in.get(c))
+    {
+        if (isspace(c))
+            continue;
+        else if (c == ';')
+        {
+            while (in.get(c))
+            {
+                if (c != '\n')
+                    continue;
+            }
+        }
+        in.unget();
+        break;
+    }
+}
+
+objptr read(std::istream &in)
+{
+    char c;
+    short sign = 1;
+    fixnum num = 0;
+
+    eat_whitespace(in);
+
+    if (!in.get(c))
+    {
+        std::cerr << "End of input" << std::endl;
+        exit(1);
+    }
+
+    if ((isdigit(c) || (c == '-') && isdigit(in.peek())))
+    {
+        /* first, check the sign */
+        if (c == '-')
+        {
+            sign = -1;
+        }
+        else
+        {
+            in.unget();
+        }
+        /* loop over the number and accumulate the value */
+        while (in.get(c))
+        {
+            if (isdigit(c))
+            {                
+                num = num * 10 + (c - '0');
+            } 
+            else 
+            {
+                break;
+            }
+        }
+        /* give it the sign */
+        num *= sign;
+        if (is_delimiter(c))
+        {
+            in.unget();
+            return make_object<fixnum>(num);
+        }
+        else
+        {
+            std::cerr << "Nubmer not followed by delimiter " << std::endl;
+            exit(1);
+        }
+    }
+    else
+    {
+        std::cerr <<  "Bad input. Unexpected '" << c << "'" << std::endl;
+        exit(1);        
+    } 
+    std::cerr <<  "Bad input. Unexpected '" << c << "'" << std::endl;
+    exit(1);        
+}
+
+
+/*************************** EVALUATE ****************************/
+
+/* until we have lists and symbols just echo */
+objptr eval(objptr exp) {
+    return exp;
+}
+
+/**************************** PRINT ******************************/
+
+void write(objptr obj) {
+    switch (obj->index()) {
+        case 0:
+            std::cout <<  std::get<fixnum>(*obj) << std::endl;
+            break;
+        default:
+            std::cerr << "Cannot write unknown type" << std::endl;
+            exit(1);
+    }
+}
+
+/***************************** REPL ******************************/
+
+int main(int argc, const char **argv)
+{
+    std::cout << "Welcome to Bootstrap Scheme." << std::endl;
+    std::cout <<  "Use ctrl-c to exit." << std::endl;
+
+    while (true)
+    {
+        std::cout << ">";
+        write(eval(read(std::cin)));
+        std::cout << std::endl;
+    }
     return 0;
 }
