@@ -6,9 +6,15 @@
 
 using fixnum = long;
 
-using obj = std::variant<fixnum>;
+constexpr static unsigned FIXNUM = 0;
+constexpr static unsigned BOOLEAN = 1;
+
+using obj = std::variant<fixnum, bool>;
 
 using objptr = std::shared_ptr<obj>;
+
+objptr gfalse;
+objptr gtrue;
 
 objptr alloc_object(void)
 {
@@ -21,9 +27,16 @@ objptr make_object(T value)
     return std::make_shared<obj>(value);
 }
 
-inline bool is_fixnum(objptr o)
+template <unsigned I>
+inline bool is_type(objptr o)
 {
-    return o->index() == 0;
+    return o->index() == I;
+}
+
+void init(void)
+{
+    gfalse = make_object<bool>(false);
+    gtrue = make_object<bool>(true);
 }
 
 /***************************** READ ******************************/
@@ -69,7 +82,25 @@ objptr read(std::istream &in)
         exit(1);
     }
 
-    if ((isdigit(c) || (c == '-') && isdigit(in.peek())))
+    if (c == '#')
+    { /* read a boolean */
+        if (!in.get(c))
+        {
+            std::cerr << "hash before eof" << std::endl;
+            exit(1);
+        }
+        switch (c)
+        {
+        case 't':
+            return gtrue;
+        case 'f':
+            return gfalse;
+        default:
+            std::cerr << "unknown boolean literal" << std::endl;
+            exit(1);
+        }
+    }
+    else if ((isdigit(c) || (c == '-') && isdigit(in.peek())))
     {
         /* first, check the sign */
         if (c == '-')
@@ -84,10 +115,10 @@ objptr read(std::istream &in)
         while (in.get(c))
         {
             if (isdigit(c))
-            {                
+            {
                 num = num * 10 + (c - '0');
-            } 
-            else 
+            }
+            else
             {
                 break;
             }
@@ -107,31 +138,36 @@ objptr read(std::istream &in)
     }
     else
     {
-        std::cerr <<  "Bad input. Unexpected '" << c << "'" << std::endl;
-        exit(1);        
-    } 
-    std::cerr <<  "Bad input. Unexpected '" << c << "'" << std::endl;
-    exit(1);        
+        std::cerr << "Bad input. Unexpected '" << c << "'" << std::endl;
+        exit(1);
+    }
+    std::cerr << "Bad input. Unexpected '" << c << "'" << std::endl;
+    exit(1);
 }
-
 
 /*************************** EVALUATE ****************************/
 
 /* until we have lists and symbols just echo */
-objptr eval(objptr exp) {
+objptr eval(objptr exp)
+{
     return exp;
 }
 
 /**************************** PRINT ******************************/
 
-void write(objptr obj) {
-    switch (obj->index()) {
-        case 0:
-            std::cout <<  std::get<fixnum>(*obj) << std::endl;
-            break;
-        default:
-            std::cerr << "Cannot write unknown type" << std::endl;
-            exit(1);
+void write(objptr obj)
+{
+    switch (obj->index())
+    {
+    case FIXNUM:
+        std::cout << std::get<fixnum>(*obj) << std::endl;
+        break;
+    case BOOLEAN:
+        std::cout << (std::get<bool>(*obj) ? "#t" : "#f") << std::endl;
+        break;
+    default:
+        std::cerr << "Cannot write unknown type" << std::endl;
+        exit(1);
     }
 }
 
@@ -140,7 +176,9 @@ void write(objptr obj) {
 int main(int argc, const char **argv)
 {
     std::cout << "Welcome to Bootstrap Scheme." << std::endl;
-    std::cout <<  "Use ctrl-c to exit." << std::endl;
+    std::cout << "Use ctrl-c to exit." << std::endl;
+
+    init();
 
     while (true)
     {
