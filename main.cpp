@@ -5,11 +5,13 @@
 /**************************** MODEL ******************************/
 
 using fixnum = long;
+using character = char;
 
 constexpr static unsigned FIXNUM = 0;
 constexpr static unsigned BOOLEAN = 1;
+constexpr static unsigned CHARACTER = 2;
 
-using obj = std::variant<fixnum, bool>;
+using obj = std::variant<fixnum, bool, character>;
 
 using objptr = std::shared_ptr<obj>;
 
@@ -31,6 +33,7 @@ template <unsigned I>
 inline bool is_type(objptr o)
 {
     return o->index() == I;
+    s
 }
 
 void init(void)
@@ -68,6 +71,76 @@ inline void eat_whitespace(std::istream &in)
     }
 }
 
+inline void eat_expected_string(std::istream &in, const std::string &str)
+{
+    char c;
+    auto str_it = std::begin(str);
+    while (str_it != std::end(str))
+    {
+        if (in.get(c))
+        {
+            if (c != *str_it)
+            {
+                std::cerr << "Unexxpected character " << c << " while scanning for " << str.c_str() << std::endl;
+                exit(1);
+            }
+        }
+        else
+        {
+            if (c != *str_it)
+            {
+                std::cerr << "Unexxpected eof while scanning for " << str.c_str() << std::endl;
+                exit(1);
+            }
+        }
+        ++str_it;
+    }
+}
+
+void peek_expected_delimiter(std::istream &in)
+{
+    int c = in.peek();
+    if (!is_delimiter(c))
+    {
+        std::cerr << "Missing delimiter " << std::endl;
+        exit(1);
+    }
+}
+
+objptr read_character(std::istream &in)
+{
+    char c;
+    if (in.get(c))
+    {
+        switch (c)
+        {
+        case 's':
+            if (in.peek() == 'p')
+            {
+                eat_expected_string(in, "pace");
+                peek_expected_delimiter(in);
+                return make_object<character>(' ');
+            }
+            break;
+        case 'n':
+            if (in.peek() == 'e')
+            {
+                eat_expected_string(in, "ewline");
+                peek_expected_delimiter(in);
+                return make_object<character>('\n');
+            }
+            break;
+        }
+        peek_expected_delimiter(in);
+        return make_object<character>(c);
+    }
+    else
+    {
+        std::cerr << "Unexpexted eof in character literal " << std::endl;
+        exit(1);
+    }
+}
+
 objptr read(std::istream &in)
 {
     char c;
@@ -95,8 +168,10 @@ objptr read(std::istream &in)
             return gtrue;
         case 'f':
             return gfalse;
+        case '\\':
+            return read_character(in);
         default:
-            std::cerr << "unknown boolean literal" << std::endl;
+            std::cerr << "unknown boolean or character literal" << std::endl;
             exit(1);
         }
     }
@@ -157,6 +232,7 @@ objptr eval(objptr exp)
 
 void write(objptr obj)
 {
+    char c;
     switch (obj->index())
     {
     case FIXNUM:
@@ -164,6 +240,21 @@ void write(objptr obj)
         break;
     case BOOLEAN:
         std::cout << (std::get<bool>(*obj) ? "#t" : "#f") << std::endl;
+        break;
+    case CHARACTER:
+        c = std::get<character>(*obj);
+        std::cout << "#\\";
+        switch (c)
+        {
+            case '\n':
+                std::cout << "newline";
+                break;
+            case ' ':
+                std::cout << "space";
+                break;
+            default:
+                std::cout << c;
+        }
         break;
     default:
         std::cerr << "Cannot write unknown type" << std::endl;
