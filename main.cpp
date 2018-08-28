@@ -6,12 +6,14 @@
 
 using fixnum = long;
 using character = char;
+using str = std::string;
 
 constexpr static unsigned FIXNUM = 0;
 constexpr static unsigned BOOLEAN = 1;
 constexpr static unsigned CHARACTER = 2;
+constexpr static unsigned STRING = 3;
 
-using obj = std::variant<fixnum, bool, character>;
+using obj = std::variant<fixnum, bool, character, str>;
 
 using objptr = std::shared_ptr<obj>;
 
@@ -24,9 +26,9 @@ objptr alloc_object(void)
 }
 
 template <typename T>
-objptr make_object(T value)
+objptr make_object( T arg )
 {
-    return std::make_shared<obj>(value);
+    return std::make_shared<obj>(arg);
 }
 
 template <unsigned I>
@@ -211,6 +213,36 @@ objptr read(std::istream &in)
             exit(1);
         }
     }
+    else if (c=='"')
+    {
+        std::string tempstring;
+        tempstring.reserve(1024);
+        while(in.get(c))
+        {
+            if (c == '"')
+                break;
+            if (c== '\\')
+            {
+                if (in.get(c))
+                {
+                    if (c == 'n')
+                        c = '\n';
+                    else if (c == 'r')
+                        c = '\r';
+                    else if (c == 't')
+                        c = '\t';                    
+                } 
+                else 
+                {
+                    std::cerr << "Non terminated string litteral" << std::endl;
+                    exit(1);
+                }
+
+            }
+            tempstring.push_back(c);
+        }
+        return make_object<str>(tempstring);
+    }
     else
     {
         std::cerr << "Bad input. Unexpected '" << c << "'" << std::endl;
@@ -233,6 +265,7 @@ objptr eval(objptr exp)
 void write(objptr obj)
 {
     char c;
+    str s;
     switch (obj->index())
     {
     case FIXNUM:
@@ -255,6 +288,29 @@ void write(objptr obj)
             default:
                 std::cout << c;
         }
+        break;
+    case STRING:
+        s = std::get<str>(*obj);
+        std::cout << """";
+        for(auto c: s)
+        {
+            switch (c)
+            {
+                case '\n':
+                    std::cout << "\\n";
+                    break;
+                case '\r':
+                    std::cout << "\\r";
+                    break;
+                case '"':
+                    std::cout << '"';
+                    break;
+                default:
+                    std::cout << c;
+                    break;
+            }
+        }
+        std::cout << """";
         break;
     default:
         std::cerr << "Cannot write unknown type" << std::endl;
