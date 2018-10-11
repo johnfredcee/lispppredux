@@ -1,6 +1,10 @@
 #include <iostream>
-#include <variant>
 #include <memory>
+#include <utility>
+#include <typeinfo>
+#include <type_traits>
+#include <string>
+#include <variant>
 
 /**************************** MODEL ******************************/
 
@@ -8,15 +12,53 @@ using fixnum = long;
 using character = char;
 using str = std::string;
 
+
 constexpr static unsigned FIXNUM = 0;
 constexpr static unsigned BOOLEAN = 1;
 constexpr static unsigned CHARACTER = 2;
 constexpr static unsigned STRING = 3;
+constexpr static unsigned CONS = 4;
 
-using obj = std::variant<fixnum, bool, character, str>;
 
+template <typename ...objdata>
+struct lispobj;
+
+template <typename ...objdata>
+struct conscell 
+{
+    std::shared_ptr<lispobj<objdata...>> car;
+    std::shared_ptr<lispobj<objdata...>> cdr;
+};
+
+template <typename ...objdata>
+struct lispobj
+{
+    using Value = std::variant< objdata..., conscell<objdata...> >;
+    Value value;
+
+    constexpr std::size_t index() const noexcept
+    {
+        return value.index();
+    }
+};
+
+
+using obj = lispobj<fixnum, bool, character, str>::Value;
 using objptr = std::shared_ptr<obj>;
 
+template<typename T, typename V>
+constexpr T& get(V& v)
+{
+    return std::get<T>(v.value);
+}
+
+template<typename T, typename V>
+constexpr const T& get(const V& v)
+{
+    return std::get<T>(v.value);
+}
+
+objptr gnil;
 objptr gfalse;
 objptr gtrue;
 
@@ -26,7 +68,7 @@ objptr alloc_object(void)
 }
 
 template <typename T>
-objptr make_object( T arg )
+objptr make_object(T arg)
 {
     return std::make_shared<obj>(arg);
 }
@@ -35,7 +77,6 @@ template <unsigned I>
 inline bool is_type(objptr o)
 {
     return o->index() == I;
-    s
 }
 
 void init(void)
@@ -213,15 +254,15 @@ objptr read(std::istream &in)
             exit(1);
         }
     }
-    else if (c=='"')
+    else if (c == '"')
     {
         std::string tempstring;
         tempstring.reserve(1024);
-        while(in.get(c))
+        while (in.get(c))
         {
             if (c == '"')
                 break;
-            if (c== '\\')
+            if (c == '\\')
             {
                 if (in.get(c))
                 {
@@ -230,14 +271,13 @@ objptr read(std::istream &in)
                     else if (c == 'r')
                         c = '\r';
                     else if (c == 't')
-                        c = '\t';                    
-                } 
-                else 
+                        c = '\t';
+                }
+                else
                 {
                     std::cerr << "Non terminated string litteral" << std::endl;
                     exit(1);
                 }
-
             }
             tempstring.push_back(c);
         }
@@ -269,48 +309,50 @@ void write(objptr obj)
     switch (obj->index())
     {
     case FIXNUM:
-        std::cout << std::get<fixnum>(*obj) << std::endl;
+        std::cout << get<fixnum>(*obj) << std::endl;
         break;
     case BOOLEAN:
-        std::cout << (std::get<bool>(*obj) ? "#t" : "#f") << std::endl;
+        std::cout << (get<bool>(*obj) ? "#t" : "#f") << std::endl;
         break;
     case CHARACTER:
-        c = std::get<character>(*obj);
+        c = get<character>(*obj);
         std::cout << "#\\";
         switch (c)
         {
-            case '\n':
-                std::cout << "newline";
-                break;
-            case ' ':
-                std::cout << "space";
-                break;
-            default:
-                std::cout << c;
+        case '\n':
+            std::cout << "newline";
+            break;
+        case ' ':
+            std::cout << "space";
+            break;
+        default:
+            std::cout << c;
         }
         break;
     case STRING:
-        s = std::get<str>(*obj);
-        std::cout << """";
-        for(auto c: s)
+        s = get<str>(*obj);
+        std::cout << ""
+                     "";
+        for (auto c : s)
         {
             switch (c)
             {
-                case '\n':
-                    std::cout << "\\n";
-                    break;
-                case '\r':
-                    std::cout << "\\r";
-                    break;
-                case '"':
-                    std::cout << '"';
-                    break;
-                default:
-                    std::cout << c;
-                    break;
+            case '\n':
+                std::cout << "\\n";
+                break;
+            case '\r':
+                std::cout << "\\r";
+                break;
+            case '"':
+                std::cout << '"';
+                break;
+            default:
+                std::cout << c;
+                break;
             }
         }
-        std::cout << """";
+        std::cout << ""
+                     "";
         break;
     default:
         std::cerr << "Cannot write unknown type" << std::endl;
