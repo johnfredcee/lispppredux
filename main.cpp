@@ -12,51 +12,170 @@ using fixnum = long;
 using character = char;
 using str = std::string;
 
-
 constexpr static unsigned FIXNUM = 0;
 constexpr static unsigned BOOLEAN = 1;
 constexpr static unsigned CHARACTER = 2;
 constexpr static unsigned STRING = 3;
 constexpr static unsigned CONS = 4;
 
+class lispobj;
 
-template <typename ...objdata>
-struct lispobj;
-
-template <typename ...objdata>
-struct conscell 
+struct conscell
 {
-    std::shared_ptr<lispobj<objdata...>> car;
-    std::shared_ptr<lispobj<objdata...>> cdr;
+    std::shared_ptr<lispobj> car;
+    std::shared_ptr<lispobj> cdr;
 };
 
-template <typename ...objdata>
-struct lispobj
+class lispobj
 {
-    using Value = std::variant< objdata..., conscell<objdata...> >;
-    Value value;
-
-    constexpr std::size_t index() const noexcept
+public:
+    lispobj() : tag(FIXNUM)
     {
-        return value.index();
+        intvalue = 0;
     }
+
+    explicit lispobj(fixnum v) : tag(FIXNUM), intvalue(v)
+    {
+    }
+
+    explicit lispobj(bool v) : tag(BOOLEAN), boolvalue(v)
+    {
+    }
+
+    explicit lispobj(character v) : tag(CHARACTER), chrvalue(v)
+    {
+    }
+
+    explicit lispobj(str v) : tag(STRING)
+    {
+        Init(strvalue, v);
+    }
+
+    explicit lispobj(conscell v) : tag(CONS)
+    {
+        Init(consvalue, v);
+    }
+
+    ~lispobj()
+    {
+        Destroy();
+    }
+
+    lispobj(const lispobj& o)
+    {
+        Copy(o);
+    }
+
+    lispobj& operator=(const lispobj& o)
+    {
+        if (&o != this)
+        {
+            Destroy();
+            Copy(o);
+        }
+    }
+
+    template <typename T>
+    const T get()
+    {
+    }
+
+    template <>
+    const fixnum get<fixnum>()
+    {
+        return intvalue;
+    }
+
+    template <>
+    const bool get<bool>()
+    {
+        return boolvalue;
+    }
+
+    template <>
+    const character get<character>()
+    {
+        return chrvalue;
+    }
+
+    template <>
+    const str get<str>()
+    {
+        return strvalue;
+    }
+
+    template <>
+    const conscell get<conscell>()
+    {
+        return consvalue;
+    }
+
+    uint32_t index()
+    {
+        return tag;
+    }
+
+  private:
+    template <typename T>
+    void Init(T &member, const T &val)
+    {
+        new (&member) T(val);
+    }
+
+    void Destroy()
+    {
+        if (tag == STRING)
+        {
+            strvalue.~str();
+        }
+        if (tag == CONS)
+        {
+            consvalue.~conscell();
+        }
+    }
+
+    void Copy(const lispobj &o)
+    {
+        switch (o.tag)
+        {
+        case FIXNUM:
+            intvalue = o.intvalue;
+            break;
+        case BOOLEAN:
+            boolvalue = o.boolvalue;
+            break;
+        case CHARACTER:
+            chrvalue = o.chrvalue;
+            break;
+        case STRING:
+            Init(strvalue, o.strvalue);
+            break;
+        case CONS:
+            Init(consvalue, o.consvalue);
+              break;
+        }
+        tag = o.tag;
+    }
+    uint32_t tag;
+
+    union {
+        /* data */
+        fixnum intvalue;
+        bool boolvalue;
+        character chrvalue;
+        str strvalue;
+        conscell consvalue;
+    };
 };
 
+using obj = lispobj;
+using objptr = std::shared_ptr<lispobj>;
 
-using obj = lispobj<fixnum, bool, character, str>::Value;
-using objptr = std::shared_ptr<obj>;
-
-template<typename T, typename V>
-constexpr T& get(V& v)
+template <typename T>
+T get(lispobj &o)
 {
-    return std::get<T>(v.value);
-}
-
-template<typename T, typename V>
-constexpr const T& get(const V& v)
-{
-    return std::get<T>(v.value);
-}
+    return o.get<T>();
+};
 
 objptr gnil;
 objptr gfalse;
