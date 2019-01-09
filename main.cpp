@@ -5,6 +5,7 @@
 #include <type_traits>
 #include <string>
 #include <variant>
+#include <cassert>
 
 /**************************** MODEL ******************************/
 
@@ -28,7 +29,7 @@ struct conscell
 
 class lispobj
 {
-public:
+  public:
     lispobj() : tag(FIXNUM)
     {
         intvalue = 0;
@@ -61,12 +62,12 @@ public:
         Destroy();
     }
 
-    lispobj(const lispobj& o)
+    lispobj(const lispobj &o)
     {
         Copy(o);
     }
 
-    lispobj& operator=(const lispobj& o)
+    lispobj &operator=(const lispobj &o)
     {
         if (&o != this)
         {
@@ -110,6 +111,18 @@ public:
         return consvalue;
     }
 
+    void set_car(std::shared_ptr<lispobj> in_car)
+    {
+        assert(tag == CONS);
+        consvalue.car = in_car;
+    }
+
+    void set_cdr(std::shared_ptr<lispobj> in_cdr)
+    {
+        assert(tag == CONS);
+        consvalue.cdr = in_cdr;
+    }
+
     uint32_t index()
     {
         return tag;
@@ -136,6 +149,7 @@ public:
 
     void Copy(const lispobj &o)
     {
+        assert(tag == o.tag);
         switch (o.tag)
         {
         case FIXNUM:
@@ -152,7 +166,7 @@ public:
             break;
         case CONS:
             Init(consvalue, o.consvalue);
-              break;
+            break;
         }
         tag = o.tag;
     }
@@ -198,10 +212,65 @@ inline bool is_type(objptr o)
     return o->index() == I;
 }
 
+objptr cons(objptr in_car, objptr in_cdr)
+{
+    return make_object<conscell>(conscell{in_car, in_cdr});
+}
+
+objptr car(objptr in_obj)
+{
+    return in_obj->get<conscell>().car;
+}
+
+void set_car(objptr in_obj, objptr in_value)
+{
+    in_obj->set_cdr(in_value);
+}
+
+objptr cdr(objptr in_obj)
+{
+    return in_obj->get<conscell>().cdr;
+}
+
+void set_cdr(objptr in_obj, objptr in_value)
+{
+    in_obj->set_cdr(in_value);
+}
+
+#define caar(obj) car(car(obj));
+#define cadr(obj) car(cdr(obj))
+#define cdar(obj) cdr(car(obj))
+#define cddr(obj) cdr(cdr(obj))
+#define caaar(obj) car(car(car(obj)))
+#define caadr(obj) car(car(cdr(obj)))
+#define cadar(obj) car(cdr(car(obj)))
+#define caddr(obj) car(cdr(cdr(obj)))
+#define cdaar(obj) cdr(car(car(obj)))
+#define cdadr(obj) cdr(car(cdr(obj)))
+#define cddar(obj) cdr(cdr(car(obj)))
+#define cdddr(obj) cdr(cdr(cdr(obj)))
+#define caaaar(obj) car(car(car(car(obj))))
+#define caaadr(obj) car(car(car(cdr(obj))))
+#define caadar(obj) car(car(cdr(car(obj))))
+#define caaddr(obj) car(car(cdr(cdr(obj))))
+#define cadaar(obj) car(cdr(car(car(obj))))
+#define cadadr(obj) car(cdr(car(cdr(obj))))
+#define caddar(obj) car(cdr(cdr(car(obj))))
+#define cadddr(obj) car(cdr(cdr(cdr(obj))))
+#define cdaaar(obj) cdr(car(car(car(obj))))
+#define cdaadr(obj) cdr(car(car(cdr(obj))))
+#define cdadar(obj) cdr(car(cdr(car(obj))))
+#define cdaddr(obj) cdr(car(cdr(cdr(obj))))
+#define cddaar(obj) cdr(cdr(car(car(obj))))
+#define cddadr(obj) cdr(cdr(car(cdr(obj))))
+#define cdddar(obj) cdr(cdr(cdr(car(obj))))
+#define cddddr(obj) cdr(cdr(cdr(cdr(obj))))
+
 void init(void)
 {
     gfalse = make_object<bool>(false);
     gtrue = make_object<bool>(true);
+    gnil = std::shared_ptr<lispobj>();
 }
 
 /***************************** READ ******************************/
@@ -303,6 +372,67 @@ objptr read_character(std::istream &in)
     }
 }
 
+objptr read(std::istream &in);
+
+objptr read_pair(std::istream &in)
+{
+    char c;
+    objptr car_obj;
+    objptr cdr_obj;
+
+    eat_whitespace(in);
+    if (in.get(c))
+    {
+        if (c == ')')
+        {
+            return gnil;
+        }
+        in.unget();
+        car_obj = read(in);
+        eat_whitespace(in);
+        if (in.get(c))
+        {
+            if (c == '.')
+            {
+                // read improper iist
+                c = in.peek();
+                if (!isspace(c))
+                {
+                    std::cerr << "Dot not followed by whitespace" << std::endl;
+                    exit(1);
+                }
+                cdr_obj = read(in);
+                eat_whitespace(in);
+                in.get(c);
+                if (c != ')')
+                {
+                    std::cerr << "Missing close paren" << std::endl;
+                    exit(1);
+                }
+                return cons(car_obj, cdr_obj);
+            }
+            else
+            {
+                // read list
+                in.unget();
+                cdr_obj = read_pair(in);
+                return cons(car_obj, cdr_obj);
+            }
+        }
+        else
+        {
+            std::cerr << "Premature end of file." << std::endl;
+            exit(1);
+        }
+    }
+    else
+    {
+        std::cerr << "Premature end of file." << std::endl;
+        exit(1);
+    }
+    return gnil;
+}
+
 objptr read(std::istream &in)
 {
     char c;
@@ -402,6 +532,10 @@ objptr read(std::istream &in)
         }
         return make_object<str>(tempstring);
     }
+    else if (c == '(')
+    {
+        return read_pair(in);
+    }
     else
     {
         std::cerr << "Bad input. Unexpected '" << c << "'" << std::endl;
@@ -421,61 +555,98 @@ objptr eval(objptr exp)
 
 /**************************** PRINT ******************************/
 
+void write(objptr obj);
+
+void write_pair(objptr obj)
+{
+    objptr car_obj;
+    objptr cdr_obj;
+
+    car_obj = car(obj);
+    cdr_obj = cdr(obj);
+    write(car_obj);
+    if (!cdr_obj)
+    {
+        return;
+    }
+    if (is_type<CONS>(cdr_obj))
+    {
+        std::cout << " ";
+        write(cdr_obj);
+    }
+    else
+    {
+        std::cout << " . ";
+        write(cdr_obj);
+    }
+}
+
 void write(objptr obj)
 {
     char c;
     str s;
-    switch (obj->index())
+    if (!obj)
     {
-    case FIXNUM:
-        std::cout << get<fixnum>(*obj) << std::endl;
-        break;
-    case BOOLEAN:
-        std::cout << (get<bool>(*obj) ? "#t" : "#f") << std::endl;
-        break;
-    case CHARACTER:
-        c = get<character>(*obj);
-        std::cout << "#\\";
-        switch (c)
+        std::cout << "nil";
+    }
+    else
+    {
+        switch (obj->index())
         {
-        case '\n':
-            std::cout << "newline";
+        case FIXNUM:
+            std::cout << get<fixnum>(*obj);
             break;
-        case ' ':
-            std::cout << "space";
+        case BOOLEAN:
+            std::cout << (get<bool>(*obj) ? "#t" : "#f");
             break;
-        default:
-            std::cout << c;
-        }
-        break;
-    case STRING:
-        s = get<str>(*obj);
-        std::cout << ""
-                     "";
-        for (auto c : s)
-        {
+        case CHARACTER:
+            c = get<character>(*obj);
+            std::cout << "#\\";
             switch (c)
             {
             case '\n':
-                std::cout << "\\n";
+                std::cout << "newline";
                 break;
-            case '\r':
-                std::cout << "\\r";
-                break;
-            case '"':
-                std::cout << '"';
+            case ' ':
+                std::cout << "space";
                 break;
             default:
                 std::cout << c;
-                break;
             }
+            break;
+        case STRING:
+            s = get<str>(*obj);
+            std::cout << ""
+                         "";
+            for (auto c : s)
+            {
+                switch (c)
+                {
+                case '\n':
+                    std::cout << "\\n";
+                    break;
+                case '\r':
+                    std::cout << "\\r";
+                    break;
+                case '"':
+                    std::cout << '"';
+                    break;
+                default:
+                    std::cout << c;
+                    break;
+                }
+            }
+            std::cout << ""
+                         "";
+            break;
+        case CONS:
+            std::cout << "(";
+            write_pair(obj);
+            std::cout << ")";
+        default:
+            std::cerr << "Cannot write unknown type" << std::endl;
+            exit(1);
         }
-        std::cout << ""
-                     "";
-        break;
-    default:
-        std::cerr << "Cannot write unknown type" << std::endl;
-        exit(1);
     }
 }
 
